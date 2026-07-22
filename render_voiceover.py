@@ -28,11 +28,11 @@ with tempfile.TemporaryDirectory(prefix="nexa-voice-") as folder:
     mix=[]
     for i,(start,_) in enumerate(segments,1):
         delay=int(start*1000)
-        filters.append(f"[{i}:a]adelay={delay}|{delay},volume=1.15[a{i}]")
+        filters.append(f"[{i}:a]aresample=48000,highpass=f=100,lowpass=f=6500,volume=0.88,adelay={delay}|{delay}[a{i}]")
         mix.append(f"[a{i}]")
-    filters.append("".join(mix)+f"amix=inputs={len(files)}:duration=longest:dropout_transition=0:normalize=0,highpass=f=80,lowpass=f=12000,loudnorm=I=-16:TP=-1.5:LRA=7[outa]")
+    filters.append("".join(mix)+f"amix=inputs={len(files)}:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0.78:attack=8:release=80[outa]")
     temp="nexa-module-voiced.mp4"
-    cmd=[ff,"-y",*inputs,"-filter_complex",";".join(filters),"-map","0:v:0","-map","[outa]","-c:v","copy","-c:a","aac","-b:a","160k","-ar","48000","-t","36","-movflags","+faststart",temp]
+    cmd=[ff,"-y",*inputs,"-filter_complex",";".join(filters),"-map","0:v:0","-map","[outa]","-c:v","copy","-c:a","aac","-b:a","192k","-ar","48000","-t","36","-movflags","+faststart",temp]
     subprocess.check_call(cmd)
     os.replace(temp,"nexa-module-intro.mp4")
 print("Chinese voice-over added to nexa-module-intro.mp4")
