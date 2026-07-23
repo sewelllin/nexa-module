@@ -28,7 +28,7 @@ const scenarios = {
   fan: {
     source: "远程应用服务器",
     match: ["风机", "打开"],
-    titles: ["接收远程自然语言", "判断需要 AI 意图解析", "端侧策略校验", "执行 fan.control"],
+    titles: ["接收远程自然语言", "模组理解远程任务", "端侧策略校验", "执行 fan.control"],
     lines: [
       "source: remote_app · skills: fan.control, timer.schedule",
       "intent: fan.timed_run · confidence: 0.98",
@@ -39,7 +39,7 @@ const scenarios = {
   serial: {
     source: "UART 串口",
     match: ["GPIO", "拉高"],
-    titles: ["接收串口文本输入", "判断需要 AI 参数抽取", "端侧策略校验", "执行 gpio.write"],
+    titles: ["接收串口文本输入", "模组理解串口任务", "端侧策略校验", "执行 gpio.write"],
     lines: [
       "source: uart0 · skills: gpio.write, timer.schedule",
       "intent: gpio.pulse_high · confidence: 0.96",
@@ -50,7 +50,7 @@ const scenarios = {
   voice: {
     source: "语音转文字",
     match: ["温度", "喷淋"],
-    titles: ["接收语音转写输入", "请求 AI 匹配联动意图", "端侧策略校验", "注册自动化规则"],
+    titles: ["接收语音转写输入", "模组理解语音任务", "端侧策略校验", "注册自动化规则"],
     lines: [
       "source: speech_text · skills: sensor.rule, irrigation.control",
       "intent: automation.create · confidence: 0.96",
