@@ -59,6 +59,12 @@ def pill(d, x, y, label, active=False):
     txt(d, (x + 105, y + 29), label, 16, (12, 31, 20), True, "mm")
 
 
+def tag(d, x, y, w, label, active=False):
+    fill = (202, 255, 99, 255) if active else (255, 255, 255, 245)
+    box(d, (x, y, x + w, y + 48), 15, fill, (214, 226, 218, 255), 1)
+    txt(d, (x + w / 2, y + 25), label, 15, (12, 31, 20), True, "mm")
+
+
 def card(d, x, y, w, h, title, body, dark=False, accent=False):
     fill = (14, 45, 33, 245) if dark else (255, 255, 255, 245)
     line = (82, 142, 106, 255) if dark else (204, 218, 208, 255)
@@ -136,12 +142,13 @@ def direct(t):
     im, d = canvas(False)
     txt(d, (640, 58), "设备直接连接业务终点", 38, (12, 24, 17), True, "ma")
     card(d, 80, 230, 310, 260, "Nexa Module", "理解自然语言\n执行设备能力\n主动上报数据", accent=True)
-    chip(d, 235, 372, .38)
     card(d, 890, 230, 310, 260, "应用服务器", "接收状态 / 事件\n展示业务结果\n下发自然语言任务", dark=True)
     d.line((410, 360, 870, 360), fill=(42, 150, 101), width=4)
     packets(d, (410, 360), (870, 360), t, 9)
     for i, lab in enumerate(["状态", "事件", "业务数据"]):
-        pill(d, 495 + i*125, 295 + 18*math.sin(t*2+i), lab, i == int(t*2) % 3)
+        widths = [92, 92, 116]
+        positions = [500, 612, 724]
+        tag(d, positions[i], 292 + 8*math.sin(t*2+i), widths[i], lab, i == int(t*2) % 3)
     txt(d, (640, 620), "数据不被困在中间平台里，直接回到客户应用。", 18, (45, 119, 78), True, "ma")
     return im, d
 
@@ -151,9 +158,10 @@ def shift(t):
     txt(d, (640, 60), "从接平台，到设备直达业务", 38, (255, 255, 255), True, "ma")
     for i, lab in enumerate(["业务需求", "控制接口", "IoT 平台", "设备协议", "硬件动作"]):
         y = 160 + i * 78
-        card(d, 95, y, 270, 52, lab, "", dark=True)
+        box(d, (95, y, 365, y + 52), 18, (14, 45, 33, 245), (82, 142, 106, 255), 2)
+        txt(d, (230, y + 27), lab, 20, (240, 255, 247), True, "mm")
         if i < 4:
-            txt(d, (230, y + 66), "↓", 18, (86, 120, 101), True, "mm")
+            txt(d, (230, y + 65), "↓", 16, (105, 155, 126), True, "mm")
     card(d, 475, 230, 330, 260, "Nexa Module", "自然语言输入\n模组理解与执行\n数据直达应用", accent=True)
     card(d, 915, 260, 250, 190, "业务应用", "拿到结果\n看到状态\n形成闭环", dark=True)
     d.line((805, 360, 915, 360), fill=(202, 255, 99), width=4)
