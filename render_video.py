@@ -1,203 +1,233 @@
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
-import math, os, subprocess, imageio_ffmpeg
+import math
+import os
+import subprocess
+
+import imageio_ffmpeg
 
 W, H, FPS, DURATION = 1280, 720, 30, 42
-FB, FR = "C:/Windows/Fonts/msyhbd.ttc", "C:/Windows/Fonts/msyh.ttc"
-OUT, POSTER = "nexa-module-intro.mp4", "nexa-video-poster.jpg"
+FONT_BOLD = "C:/Windows/Fonts/msyhbd.ttc"
+FONT_REGULAR = "C:/Windows/Fonts/msyh.ttc"
+OUTPUT = "nexa-module-intro.mp4"
+POSTER = "nexa-video-poster.jpg"
+
+GREEN = (94, 235, 159)
+LIME = (194, 255, 89)
+DARK = (6, 14, 10)
+DEEP = (13, 45, 32)
+INK = (11, 30, 20)
+MUTED = (141, 168, 152)
+WHITE = (248, 255, 250)
 
 
 def font(size, bold=False):
-    return ImageFont.truetype(FB if bold else FR, size)
+    return ImageFont.truetype(FONT_BOLD if bold else FONT_REGULAR, size)
 
 
-def txt(d, xy, s, n, c, bold=False, a=None):
-    d.text(xy, s, font=font(n, bold), fill=c, anchor=a)
+def text(draw, xy, value, size, color, bold=False, anchor=None, spacing=8):
+    draw.multiline_text(xy, value, font=font(size, bold), fill=color, anchor=anchor, spacing=spacing, align="center" if anchor else "left")
 
 
-def box(d, b, r, fill, outline=None, w=1):
-    d.rounded_rectangle(b, radius=r, fill=fill, outline=outline, width=w)
+def rounded(draw, bounds, radius, fill, outline=None, width=1):
+    draw.rounded_rectangle(bounds, radius=radius, fill=fill, outline=outline, width=width)
 
 
-def ease(x):
-    x = max(0, min(1, x))
-    return x * x * (3 - 2 * x)
-
-
-def canvas(dark=True):
-    im = Image.new("RGB", (W, H), (5, 12, 9) if dark else (245, 248, 244))
-    d = ImageDraw.Draw(im, "RGBA")
-    grid = (112, 246, 178, 15) if dark else (22, 90, 58, 12)
+def background(dark=True):
+    image = Image.new("RGB", (W, H), DARK if dark else (246, 249, 246))
+    draw = ImageDraw.Draw(image, "RGBA")
+    grid = (112, 246, 178, 13) if dark else (22, 90, 58, 10)
     for x in range(0, W, 64):
-        d.line((x, 0, x, H), fill=grid)
+        draw.line((x, 0, x, H), fill=grid)
     for y in range(0, H, 64):
-        d.line((0, y, W, y), fill=grid)
-    return im, d
+        draw.line((0, y, W, y), fill=grid)
+    return image, draw
 
 
-def glow(im, x, y, r, col=(91, 235, 160), a=95):
-    lay = Image.new("RGBA", (W, H))
-    q = ImageDraw.Draw(lay)
-    q.ellipse((x - r, y - r, x + r, y + r), fill=(*col, a))
-    lay = lay.filter(ImageFilter.GaussianBlur(r // 2))
-    im.paste(lay, (0, 0), lay)
+def glow(image, x, y, radius, alpha=90):
+    layer = Image.new("RGBA", (W, H))
+    draw = ImageDraw.Draw(layer)
+    draw.ellipse((x-radius, y-radius, x+radius, y+radius), fill=(*GREEN, alpha))
+    layer = layer.filter(ImageFilter.GaussianBlur(radius // 2))
+    image.paste(layer, (0, 0), layer)
 
 
-def chip(d, x, y, s=1):
-    box(d, (x - 118*s, y - 148*s, x + 118*s, y + 148*s), 34*s, (9, 31, 22, 255), (79, 130, 100, 255), 3)
-    box(d, (x - 96*s, y - 126*s, x + 96*s, y + 126*s), 24*s, (15, 52, 37, 255), (61, 109, 82, 255), 2)
-    box(d, (x - 66*s, y - 66*s, x + 66*s, y + 66*s), 26*s, (202, 255, 99, 255))
-    txt(d, (x, y - 10*s), "NEXA", int(31*s), (8, 36, 23), True, "mm")
-    txt(d, (x, y + 31*s), "AGENT MODULE", int(8*s), (8, 36, 23), True, "mm")
-    for i in range(6):
-        px = x - 48*s + i * 19*s
-        box(d, (px, y + 108*s, px + 8*s, y + 126*s), 4*s, (82, 111, 95, 255))
+def module(draw, x, y, scale=1.0):
+    outer_w, outer_h = 220 * scale, 268 * scale
+    rounded(draw, (x-outer_w/2, y-outer_h/2, x+outer_w/2, y+outer_h/2), 30*scale, (9, 31, 22, 255), (76, 132, 97, 255), 3)
+    rounded(draw, (x-outer_w/2+18*scale, y-outer_h/2+18*scale, x+outer_w/2-18*scale, y+outer_h/2-18*scale), 22*scale, (15, 52, 37, 255), (58, 108, 80, 255), 2)
+    rounded(draw, (x-62*scale, y-62*scale, x+62*scale, y+62*scale), 24*scale, (*LIME, 255))
+    text(draw, (x, y-9*scale), "NEXA", max(16, int(29*scale)), INK, True, "mm")
+    text(draw, (x, y+27*scale), "AGENT MODULE", max(6, int(8*scale)), INK, True, "mm")
+    for index in range(6):
+        pin_x = x - 47*scale + index*19*scale
+        rounded(draw, (pin_x, y+104*scale, pin_x+8*scale, y+122*scale), 3*scale, (83, 113, 96, 255))
 
 
-def pill(d, x, y, label, active=False):
-    fill = (202, 255, 99, 255) if active else (255, 255, 255, 235)
-    box(d, (x, y, x + 210, y + 56), 16, fill)
-    txt(d, (x + 105, y + 29), label, 16, (12, 31, 20), True, "mm")
+def title(draw, value, dark=True):
+    text(draw, (640, 72), value, 38, WHITE if dark else INK, True, "ma")
 
 
-def tag(d, x, y, w, label, active=False):
-    fill = (202, 255, 99, 255) if active else (255, 255, 255, 245)
-    box(d, (x, y, x + w, y + 48), 15, fill, (214, 226, 218, 255), 1)
-    txt(d, (x + w / 2, y + 25), label, 15, (12, 31, 20), True, "mm")
-
-
-def card(d, x, y, w, h, title, body, dark=False, accent=False):
-    fill = (14, 45, 33, 245) if dark else (255, 255, 255, 245)
-    line = (82, 142, 106, 255) if dark else (204, 218, 208, 255)
+def card(draw, bounds, heading, body="", accent=False, dark=False, centered=False):
+    x1, y1, x2, y2 = bounds
     if accent:
-        fill = line = (202, 255, 99, 255)
-    box(d, (x, y, x + w, y + h), 22, fill, line, 2)
-    txt(d, (x + 26, y + 42), title, 22, (10, 33, 20) if accent or not dark else (240, 255, 247), True)
-    txt(d, (x + 26, y + 84), body, 15, (72, 84, 75) if accent or not dark else (158, 184, 169))
+        fill, outline, heading_color, body_color = (*LIME, 255), (*LIME, 255), INK, (55, 79, 63)
+    elif dark:
+        fill, outline, heading_color, body_color = (*DEEP, 248), (80, 142, 105, 255), WHITE, MUTED
+    else:
+        fill, outline, heading_color, body_color = (255, 255, 255, 248), (211, 224, 215, 255), INK, (73, 94, 81)
+    rounded(draw, bounds, 22, fill, outline, 2)
+    if centered:
+        center_x, center_y = (x1+x2)/2, (y1+y2)/2
+        text(draw, (center_x, center_y), heading, 19, heading_color, True, "mm")
+        return
+    text(draw, (x1+28, y1+28), heading, 22, heading_color, True)
+    if body:
+        text(draw, (x1+28, y1+76), body, 15, body_color, False, spacing=9)
 
 
-def packets(d, a, b, t, n=6, col=(98, 240, 171)):
-    for i in range(n):
-        u = (t * .55 + i / n) % 1
-        x = a[0] + (b[0] - a[0]) * u
-        y = a[1] + (b[1] - a[1]) * u
-        d.ellipse((x - 6, y - 6, x + 6, y + 6), fill=(*col, 245))
+def packet_line(draw, start, end, t, count=7, color=GREEN):
+    draw.line((*start, *end), fill=(*color, 170), width=3)
+    for index in range(count):
+        progress = (t * 0.42 + index / count) % 1
+        x = start[0] + (end[0] - start[0]) * progress
+        y = start[1] + (end[1] - start[1]) * progress
+        draw.ellipse((x-5, y-5, x+5, y+5), fill=(*color, 245))
 
 
-def fade(d, t, a, b):
-    alpha = int(255 * max(1 - ease((t - a) / .45), 1 - ease((b - t) / .45)))
-    if alpha:
-        d.rectangle((0, 0, W, H), fill=(5, 12, 9, alpha))
+def fade(draw, global_time, start, end):
+    edge = min((global_time-start)/0.45, (end-global_time)/0.45, 1)
+    alpha = int(255 * (1 - max(0, edge)))
+    if alpha > 0:
+        draw.rectangle((0, 0, W, H), fill=(*DARK, alpha))
 
 
-def intro(t):
-    im, d = canvas(True)
-    glow(im, 910, 355, 280)
-    d = ImageDraw.Draw(im, "RGBA")
-    for i in range(3):
-        r = 155 + i * 62 + 8 * math.sin(t * 1.5 + i)
-        d.ellipse((910-r, 355-r, 910+r, 355+r), outline=(112, 246, 178, 36), width=2)
-    chip(d, 910, 355, .92)
-    txt(d, (96, 116), "NEXA MODULE", 14, (110, 244, 174), True)
-    txt(d, (96, 188), "自然语言进入", 56, (255, 255, 255), True)
-    txt(d, (96, 258), "设备能力发生", 56, (91, 235, 160), True)
-    txt(d, (100, 356), "不是设备接入平台，而是设备直接理解、执行并回到业务。", 19, (153, 177, 164))
-    pill(d, 100, 438, "任何入口都能说人话", True)
-    pill(d, 330, 438, "去中间节点")
-    pill(d, 560, 438, "直达应用服务器")
-    return im, d
+def scene_intro(t):
+    image, draw = background(True)
+    glow(image, 930, 350, 270)
+    draw = ImageDraw.Draw(image, "RGBA")
+    for index in range(3):
+        radius = 150 + index*60 + 5*math.sin(t*1.4+index)
+        draw.ellipse((930-radius, 350-radius, 930+radius, 350+radius), outline=(112, 246, 178, 32), width=2)
+    text(draw, (96, 110), "NEXA MODULE", 14, GREEN, True)
+    text(draw, (96, 190), "自然语言进入", 54, WHITE, True)
+    text(draw, (96, 260), "设备能力发生", 54, GREEN, True)
+    text(draw, (100, 350), "设备直接理解、执行，\n并把结果送回业务。", 19, MUTED, False, spacing=10)
+    labels = ["自然语言输入", "设备自主工作", "业务直接连接"]
+    for index, label in enumerate(labels):
+        card(draw, (100+index*220, 455, 300+index*220, 515), label, accent=index == 0, centered=True)
+    module(draw, 930, 350, 0.9)
+    return image, draw
 
 
-def inputs(t):
-    im, d = canvas(False)
-    txt(d, (640, 62), "所有入口，都变成自然语言入口", 38, (12, 24, 17), True, "ma")
-    chip(d, 640, 380, .62)
-    data = [("串口文本", 110, 165), ("远程控制", 110, 500), ("语音转写", 970, 165), ("本地界面", 970, 500)]
-    for i, (lab, x, y) in enumerate(data):
-        active = int(t * 2.2) % 4 == i
-        pill(d, x, y, lab, active)
-        sx, sy = (x + 210 if x < 640 else x), y + 28
-        ex, ey = (548 if x < 640 else 732), 380
-        d.line((sx, sy, ex, ey), fill=(45, 157, 104, 110), width=2)
-        packets(d, (sx, sy), (ex, ey), t + i * .13, 3)
-    txt(d, (640, 640), "Nexa Module 统一接收、理解任务边界", 18, (46, 119, 78), True, "ma")
-    return im, d
+def scene_inputs(t):
+    image, draw = background(False)
+    title(draw, "所有入口，都能直接说人话", False)
+    input_cards = [
+        ((90, 170, 330, 250), "串口文字"),
+        ((90, 470, 330, 550), "远程控制"),
+        ((950, 170, 1190, 250), "语音输入"),
+        ((950, 470, 1190, 550), "本地界面"),
+    ]
+    centers = [(330, 210), (330, 510), (950, 210), (950, 510)]
+    module_center = (640, 360)
+    for index, (bounds, label) in enumerate(input_cards):
+        card(draw, bounds, label, accent=int(t*2) % 4 == index, centered=True)
+        packet_line(draw, centers[index], module_center, t+index*0.25, 4)
+    module(draw, *module_center, 0.62)
+    text(draw, (640, 640), "一种表达方式，覆盖所有设备入口", 18, (46, 119, 78), True, "ma")
+    return image, draw
 
 
-def module(t):
-    im, d = canvas(True)
-    glow(im, 640, 360, 230)
-    d = ImageDraw.Draw(im, "RGBA")
-    txt(d, (640, 58), "AI 意图理解，是 Module 的内置能力", 38, (255, 255, 255), True, "ma")
-    chip(d, 640, 360, .72)
-    nodes = [("理解输入", -260, -90), ("判断任务", 240, -90), ("调度能力", -250, 130), ("本地执行", 250, 130)]
-    for i, (lab, dx, dy) in enumerate(nodes):
-        x, y = 640 + dx + 6*math.sin(t*2+i), 360 + dy + 6*math.cos(t*2+i)
-        card(d, x-88, y-36, 176, 72, lab, "", accent=(i == int(t*1.6) % 4))
-        d.line((x, y, 640 + (85 if dx < 0 else -85), 360 + (40 if dy < 0 else -40)), fill=(102, 235, 168, 80), width=2)
-    txt(d, (640, 638), "用户看到的是：设备会听懂、会判断、会行动", 18, (153, 177, 164), True, "ma")
-    return im, d
+def scene_module(t):
+    image, draw = background(True)
+    glow(image, 640, 365, 225)
+    draw = ImageDraw.Draw(image, "RGBA")
+    title(draw, "意图理解，是 Module 的内置能力", True)
+    capabilities = [
+        ((110, 190, 350, 270), "理解输入", (350, 230)),
+        ((930, 190, 1170, 270), "判断任务", (930, 230)),
+        ((110, 470, 350, 550), "调度能力", (350, 510)),
+        ((930, 470, 1170, 550), "本地执行", (930, 510)),
+    ]
+    for index, (bounds, label, point) in enumerate(capabilities):
+        card(draw, bounds, label, accent=int(t*1.5) % 4 == index, centered=True)
+        packet_line(draw, point, (640, 365), t+index*0.2, 3)
+    module(draw, 640, 365, 0.68)
+    text(draw, (640, 635), "设备会听懂、会判断、会行动", 18, MUTED, True, "ma")
+    return image, draw
 
 
-def direct(t):
-    im, d = canvas(False)
-    txt(d, (640, 58), "设备直接连接业务终点", 38, (12, 24, 17), True, "ma")
-    card(d, 80, 230, 310, 260, "Nexa Module", "理解自然语言\n执行设备能力\n主动上报数据", accent=True)
-    card(d, 890, 230, 310, 260, "应用服务器", "接收状态 / 事件\n展示业务结果\n下发自然语言任务", dark=True)
-    d.line((410, 360, 870, 360), fill=(42, 150, 101), width=4)
-    packets(d, (410, 360), (870, 360), t, 9)
-    for i, lab in enumerate(["状态", "事件", "业务数据"]):
-        widths = [92, 92, 116]
-        positions = [500, 612, 724]
-        tag(d, positions[i], 292 + 8*math.sin(t*2+i), widths[i], lab, i == int(t*2) % 3)
-    txt(d, (640, 620), "数据不被困在中间平台里，直接回到客户应用。", 18, (45, 119, 78), True, "ma")
-    return im, d
+def scene_direct(t):
+    image, draw = background(False)
+    title(draw, "设备直接连接业务终点", False)
+    card(draw, (70, 205, 390, 505), "Nexa Module", "理解自然语言\n执行设备能力\n主动上报数据", accent=True)
+    card(draw, (890, 205, 1210, 505), "应用服务器", "接收状态与事件\n展示业务结果\n下发自然语言任务", dark=True)
+    packet_line(draw, (410, 360), (870, 360), t, 8, (43, 157, 103))
+    tags = [(480, 270, 580, 320, "状态"), (590, 270, 690, 320, "事件"), (700, 270, 820, 320, "业务数据")]
+    for index, (x1, y1, x2, y2, label) in enumerate(tags):
+        card(draw, (x1, y1, x2, y2), label, accent=int(t*1.8) % 3 == index, centered=True)
+    text(draw, (640, 625), "绕过中间平台，数据直接回到客户应用", 18, (46, 119, 78), True, "ma")
+    return image, draw
 
 
-def shift(t):
-    im, d = canvas(True)
-    txt(d, (640, 60), "从接平台，到设备直达业务", 38, (255, 255, 255), True, "ma")
-    for i, lab in enumerate(["业务需求", "控制接口", "IoT 平台", "设备协议", "硬件动作"]):
-        y = 160 + i * 78
-        box(d, (95, y, 365, y + 52), 18, (14, 45, 33, 245), (82, 142, 106, 255), 2)
-        txt(d, (230, y + 27), lab, 20, (240, 255, 247), True, "mm")
-        if i < 4:
-            txt(d, (230, y + 65), "↓", 16, (105, 155, 126), True, "mm")
-    card(d, 475, 230, 330, 260, "Nexa Module", "自然语言输入\n模组理解与执行\n数据直达应用", accent=True)
-    card(d, 915, 260, 250, 190, "业务应用", "拿到结果\n看到状态\n形成闭环", dark=True)
-    d.line((805, 360, 915, 360), fill=(202, 255, 99), width=4)
-    packets(d, (805, 360), (915, 360), t, 3, (202, 255, 99))
-    return im, d
+def scene_shift(t):
+    image, draw = background(True)
+    title(draw, "从层层接入，到设备直达业务", True)
+    text(draw, (235, 145), "传统链路", 15, MUTED, True, "ma")
+    stages = ["业务需求", "控制接口", "IoT 平台", "设备协议", "硬件动作"]
+    for index, label in enumerate(stages):
+        y = 175 + index*82
+        card(draw, (95, y, 375, y+54), label, dark=True, centered=True)
+        if index < len(stages)-1:
+            text(draw, (235, y+68), "↓", 15, (107, 154, 127), True, "mm")
+    text(draw, (430, 355), "→", 38, GREEN, True, "mm")
+    card(draw, (500, 225, 805, 495), "Nexa Module", "自然语言输入\n模组理解与执行\n数据主动上报", accent=True)
+    packet_line(draw, (825, 360), (900, 360), t, 3, LIME)
+    card(draw, (920, 255, 1185, 465), "业务应用", "拿到结果\n看到状态\n形成闭环", dark=True)
+    return image, draw
 
 
-def final(t):
-    im, d = canvas(True)
-    glow(im, 640, 335, 300, a=120)
-    d = ImageDraw.Draw(im, "RGBA")
-    chip(d, 640, 250, .58)
-    txt(d, (640, 430), "让设备听懂人话", 54, (255, 255, 255), True, "ma")
-    txt(d, (640, 500), "并直接连到你的业务", 54, (91, 235, 160), True, "ma")
-    txt(d, (640, 610), "Natural Language In · Module Acts · Data Direct To App", 14, (153, 177, 164), True, "ma")
-    return im, d
+def scene_final(t):
+    image, draw = background(True)
+    glow(image, 640, 310, 280, 110)
+    draw = ImageDraw.Draw(image, "RGBA")
+    module(draw, 640, 235, 0.54)
+    text(draw, (640, 430), "让设备听懂人话", 50, WHITE, True, "ma")
+    text(draw, (640, 500), "并直接连接你的业务", 50, GREEN, True, "ma")
+    text(draw, (640, 610), "Natural Language In  ·  Module Acts  ·  Data Direct To App", 14, MUTED, True, "ma")
+    return image, draw
 
 
-SCENES = [(0, 6, intro), (6, 13, inputs), (13, 20, module), (20, 28, direct), (28, 36, shift), (36, 42, final)]
-ff = imageio_ffmpeg.get_ffmpeg_exe()
-cmd = [ff, "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-", "-an", "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-pix_fmt", "yuv420p", "-movflags", "+faststart", OUT]
-p = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+SCENES = [
+    (0, 6, scene_intro),
+    (6, 13, scene_inputs),
+    (13, 20, scene_module),
+    (20, 28, scene_direct),
+    (28, 36, scene_shift),
+    (36, 42, scene_final),
+]
+
+ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+command = [
+    ffmpeg, "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}",
+    "-r", str(FPS), "-i", "-", "-an", "-c:v", "libx264", "-crf", "18",
+    "-preset", "medium", "-pix_fmt", "yuv420p", "-movflags", "+faststart", OUTPUT,
+]
+process = subprocess.Popen(command, stdin=subprocess.PIPE)
 poster = None
-for frame in range(FPS * DURATION):
-    t = frame / FPS
-    for a, b, fn in SCENES:
-        if a <= t < b:
-            im, d = fn(t - a)
-            fade(d, t, a, b)
+for frame_index in range(FPS * DURATION):
+    global_time = frame_index / FPS
+    for start, end, renderer in SCENES:
+        if start <= global_time < end:
+            frame, frame_draw = renderer(global_time - start)
+            fade(frame_draw, global_time, start, end)
             break
-    if frame == FPS * 2:
-        poster = im.copy()
-    p.stdin.write(im.tobytes())
-p.stdin.close()
-p.wait()
+    if frame_index == FPS * 2:
+        poster = frame.copy()
+    process.stdin.write(frame.tobytes())
+
+process.stdin.close()
+process.wait()
 if poster:
     poster.save(POSTER, quality=92)
-print(os.path.abspath(OUT), os.path.getsize(OUT))
-print(os.path.abspath(POSTER), os.path.getsize(POSTER))
+print(os.path.abspath(OUTPUT), os.path.getsize(OUTPUT))
