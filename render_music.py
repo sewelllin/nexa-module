@@ -1,35 +1,82 @@
-import numpy as np,wave,subprocess,imageio_ffmpeg,os
-SR=48000;D=48;N=SR*D;music=np.zeros((N,2),dtype=np.float64)
-tempo=96;beat=60/tempo
-chords=[[130.81,164.81,196.00,246.94],[110.00,130.81,164.81,220.00],[87.31,130.81,174.61,220.00],[98.00,146.83,196.00,220.00]]
-# soft evolving pads
-for ci,start in enumerate(np.arange(0,D,beat*4)):
-    dur=beat*4.6;i0=int(start*SR);i1=min(N,int((start+dur)*SR));tt=np.arange(i1-i0)/SR
-    env=np.minimum(1,tt/.45)*np.minimum(1,(dur-tt)/.7);ch=chords[ci%4]
-    for j,fr in enumerate(ch):
-        tone=np.sin(2*np.pi*fr*tt)+.18*np.sin(2*np.pi*fr*2*tt)
-        pan=.25+.5*(j/(len(ch)-1));music[i0:i1,0]+=tone*env*(1-pan)*.065;music[i0:i1,1]+=tone*env*pan*.065
-# melodic glass plucks, no high-frequency noise
-scale=[261.63,329.63,392.00,493.88,440.00,392.00,329.63,293.66]
-for k,start in enumerate(np.arange(0,D,beat/2)):
-    if k%4 in (0,2,3):
-        fr=scale[k%len(scale)];dur=.42;i0=int(start*SR);i1=min(N,i0+int(dur*SR));tt=np.arange(i1-i0)/SR
-        env=np.exp(-tt*8)*(1-np.exp(-tt*80));tone=np.sin(2*np.pi*fr*tt)+.22*np.sin(2*np.pi*fr*2*tt)
-        pan=.35+.3*((k%8)/7);music[i0:i1,0]+=tone*env*(1-pan)*.13;music[i0:i1,1]+=tone*env*pan*.13
-# restrained kick and low pulse
-for k,start in enumerate(np.arange(0,D,beat)):
-    dur=.22;i0=int(start*SR);i1=min(N,i0+int(dur*SR));tt=np.arange(i1-i0)/SR
-    freq=72-22*(tt/dur);phase=2*np.pi*np.cumsum(freq)/SR;kick=np.sin(phase)*np.exp(-tt*18)*.22
-    music[i0:i1,0]+=kick;music[i0:i1,1]+=kick
-# gentle stereo echo
-delay=int(.19*SR);music[delay:,0]+=music[:-delay,1]*.10;music[delay:,1]+=music[:-delay,0]*.10
-# fade and normalize safely
-fade=int(1.3*SR);music[:fade]*=np.linspace(0,1,fade)[:,None];music[-fade:]*=np.linspace(1,0,fade)[:,None]
-music/=max(1,np.max(np.abs(music))/.72)
-pcm=(music*32767).astype(np.int16)
-wav="nexa-bg-music.wav"
-with wave.open(wav,"wb") as w:w.setnchannels(2);w.setsampwidth(2);w.setframerate(SR);w.writeframes(pcm.tobytes())
-ff=imageio_ffmpeg.get_ffmpeg_exe();tmp="nexa-module-premium.mp4"
-cmd=[ff,"-y","-i","nexa-module-intro.mp4","-i",wav,"-filter_complex","[0:a]volume=1.0,pan=stereo|c0=c0|c1=c0[voice];[1:a]volume=0.20,lowpass=f=5200[music];[voice][music]amix=inputs=2:duration=first:dropout_transition=0,alimiter=limit=0.82:attack=8:release=100[a]","-map","0:v:0","-map","[a]","-c:v","copy","-c:a","aac","-b:a","192k","-ar","48000","-ac","2","-t","48","-movflags","+faststart",tmp]
-subprocess.check_call(cmd);os.replace(tmp,"nexa-module-intro.mp4");os.remove(wav)
-print("Original background music mixed under narration")
+import os
+import subprocess
+import wave
+
+import imageio_ffmpeg
+import numpy as np
+
+SAMPLE_RATE, DURATION = 48000, 42
+SAMPLE_COUNT = SAMPLE_RATE * DURATION
+VIDEO, WAV, OUTPUT = "nexa-module-intro.mp4", "nexa-bg-music.wav", "nexa-module-final.mp4"
+music = np.zeros((SAMPLE_COUNT, 2), dtype=np.float64)
+tempo = 92
+beat = 60 / tempo
+chords = [
+    [130.81, 164.81, 196.00, 246.94],
+    [110.00, 130.81, 164.81, 220.00],
+    [87.31, 130.81, 174.61, 220.00],
+    [98.00, 146.83, 196.00, 220.00],
+]
+
+for chord_index, start in enumerate(np.arange(0, DURATION, beat * 4)):
+    duration = beat * 4.7
+    start_sample = int(start * SAMPLE_RATE)
+    end_sample = min(SAMPLE_COUNT, int((start + duration) * SAMPLE_RATE))
+    timeline = np.arange(end_sample - start_sample) / SAMPLE_RATE
+    envelope = np.minimum(1, timeline / 0.7) * np.minimum(1, (duration - timeline) / 1.1)
+    for note_index, frequency in enumerate(chords[chord_index % len(chords)]):
+        tone = np.sin(2 * np.pi * frequency * timeline)
+        tone += 0.12 * np.sin(2 * np.pi * frequency * 2 * timeline)
+        pan = 0.3 + 0.4 * note_index / 3
+        music[start_sample:end_sample, 0] += tone * envelope * (1 - pan) * 0.055
+        music[start_sample:end_sample, 1] += tone * envelope * pan * 0.055
+
+scale = [261.63, 329.63, 392.00, 493.88, 440.00, 392.00, 329.63, 293.66]
+for note_index, start in enumerate(np.arange(0, DURATION, beat)):
+    if note_index % 4 == 3:
+        continue
+    duration = 0.48
+    start_sample = int(start * SAMPLE_RATE)
+    end_sample = min(SAMPLE_COUNT, start_sample + int(duration * SAMPLE_RATE))
+    timeline = np.arange(end_sample - start_sample) / SAMPLE_RATE
+    envelope = np.exp(-timeline * 7) * (1 - np.exp(-timeline * 60))
+    frequency = scale[note_index % len(scale)]
+    tone = np.sin(2 * np.pi * frequency * timeline)
+    tone += 0.16 * np.sin(2 * np.pi * frequency * 2 * timeline)
+    pan = 0.38 + 0.24 * (note_index % 8) / 7
+    music[start_sample:end_sample, 0] += tone * envelope * (1 - pan) * 0.10
+    music[start_sample:end_sample, 1] += tone * envelope * pan * 0.10
+
+delay = int(0.22 * SAMPLE_RATE)
+music[delay:, 0] += music[:-delay, 1] * 0.08
+music[delay:, 1] += music[:-delay, 0] * 0.08
+fade = int(1.5 * SAMPLE_RATE)
+music[:fade] *= np.linspace(0, 1, fade)[:, None]
+music[-fade:] *= np.linspace(1, 0, fade)[:, None]
+music /= max(1, np.max(np.abs(music)) / 0.68)
+
+pcm = (music * 32767).astype(np.int16)
+with wave.open(WAV, "wb") as wav_file:
+    wav_file.setnchannels(2)
+    wav_file.setsampwidth(2)
+    wav_file.setframerate(SAMPLE_RATE)
+    wav_file.writeframes(pcm.tobytes())
+
+ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+filter_graph = (
+    "[0:a]asplit=2[voice][sidechain];"
+    "[1:a]volume=0.17,lowpass=f=6000[music];"
+    "[music][sidechain]sidechaincompress=threshold=0.025:ratio=8:attack=25:release=420[ducked];"
+    "[voice][ducked]amix=inputs=2:duration=first:dropout_transition=0,"
+    "loudnorm=I=-17:TP=-1.5:LRA=9,alimiter=limit=0.95:attack=5:release=100[audio]"
+)
+command = [
+    ffmpeg, "-y", "-i", VIDEO, "-i", WAV, "-filter_complex", filter_graph,
+    "-map", "0:v:0", "-map", "[audio]", "-c:v", "copy", "-c:a", "aac",
+    "-b:a", "192k", "-ar", "48000", "-ac", "2", "-t", "42",
+    "-movflags", "+faststart", OUTPUT,
+]
+subprocess.check_call(command)
+os.replace(OUTPUT, VIDEO)
+os.remove(WAV)
+print("Light background music mixed under narration")
